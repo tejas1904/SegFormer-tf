@@ -1,9 +1,11 @@
 import tensorflow as tf
+import tensorflow_model_optimization as tfmot
 from .Attention import Attention
 from .utils import DropPath
 
 
-class DWConv(tf.keras.layers.Layer):
+
+class DWConv(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer):
     def __init__(self, filters=768, **kwargs):
         super().__init__(**kwargs)
         self.dwconv = tf.keras.layers.Conv2D(
@@ -23,9 +25,12 @@ class DWConv(tf.keras.layers.Layer):
             x, (get_shape_2[0], get_shape_2[1] * get_shape_2[2], get_shape_2[3])
         )
         return x
+    
+    def get_prunable_weights(self):
+        return[self.dwconv.kernel]
 
 
-class Mlp(tf.keras.layers.Layer):
+class Mlp(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer):
     def __init__(
         self,
         in_features,
@@ -50,9 +55,12 @@ class Mlp(tf.keras.layers.Layer):
         x = self.fc2(x)
         x = self.drop(x)
         return x
+    
+    def get_prunable_weights(self):
+        return [self.fc1.kernel] + self.dwconv.get_prunable_weights() + [self.fc2.kernel]
 
 
-class Block(tf.keras.layers.Layer):
+class Block(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer):
     def __init__(
         self,
         dim,
@@ -89,9 +97,13 @@ class Block(tf.keras.layers.Layer):
         x = x + self.drop_path(self.attn(self.norm1(x), H, W))
         x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
         return x
+    
+    def get_prunable_weights(self):
+        
+        return self.mlp.get_prunable_weights()
 
 
-class OverlapPatchEmbed(tf.keras.layers.Layer):
+class OverlapPatchEmbed(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer):
     def __init__(
         self, img_size=224, patch_size=7, stride=4, filters=768, **kwargs
     ):
@@ -115,9 +127,12 @@ class OverlapPatchEmbed(tf.keras.layers.Layer):
         x = tf.reshape(x, (-1, H * W, C))
         x = self.norm(x)
         return x, H, W
+    
+    def get_prunable_weights(self):
+        return [self.conv.kernel]
 
 
-class MixVisionTransformer(tf.keras.layers.Layer):
+class MixVisionTransformer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableLayer):
     def __init__(
         self,
         img_size=224,
@@ -265,3 +280,21 @@ class MixVisionTransformer(tf.keras.layers.Layer):
     def call(self, x):
         x = self.call_features(x)
         return x
+    
+    def get_prunable_weights(self):
+        weights = []
+
+        # Patch embedding layers
+        for patch in [self.patch_embed1, self.patch_embed2, self.patch_embed3, self.patch_embed4]:
+            weights.extend(patch.get_prunable_weights())
+
+        # Blocks and their sub-blocks
+        for block in [self.block1, self.block2, self.block3, self.block4]:
+            for sub_block in block:
+                weights.extend(sub_block.get_prunable_weights())
+
+        return weights
+
+        # w1 = self.patch_embed1.get_prunable_weights()+self.patch_embed2.get_prunable_weights()+self.patch_embed3.get_prunable_weights()+self.patch_embed4.get_prunable_weights()
+        # w2 = self.block1[0].get_prunable_weights()+self.block2[0].get_prunable_weights()+self.block3[0].get_prunable_weights()+self.block4[0].get_prunable_weights()
+\
