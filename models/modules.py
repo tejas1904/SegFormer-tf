@@ -297,4 +297,4 @@ class MixVisionTransformer(tf.keras.layers.Layer, tfmot.sparsity.keras.PrunableL
 
         # w1 = self.patch_embed1.get_prunable_weights()+self.patch_embed2.get_prunable_weights()+self.patch_embed3.get_prunable_weights()+self.patch_embed4.get_prunable_weights()
         # w2 = self.block1[0].get_prunable_weights()+self.block2[0].get_prunable_weights()+self.block3[0].get_prunable_weights()+self.block4[0].get_prunable_weights()
-\
+
